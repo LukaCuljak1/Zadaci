@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Zadaci</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.13.1/underscore-min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/backbone.js/1.4.0/backbone-min.js"></script>
+</head>
+<body class="bg-light">
+    <div class="container mt-5">
+        <h1 class="text-center">Lista Zadataka</h1>
+        <div class="input-group mb-3">
+            <input type="text" id="new-task" class="form-control" placeholder="Unesite zadatak" aria-label="Novi Zadatak">
+            <button id="add-task-btn" class="btn btn-primary">Dodaj</button>
+            <button id="apply-tasks-btn" class="btn btn-success ms-2">Prihvati</button>
+        </div>
+        <ul id="task-list" class="list-group"></ul>
+    </div>
+
+    <script type="text/javascript">
+        var Task = Backbone.Model.extend({
+            defaults: {
+                content: '',
+                completed: false
+            },
+            urlRoot: '/api/tasks',
+            toggleCompleted: function() {
+                this.save({ completed: !this.get('completed') });
+            }
+        });
+
+        var TaskList = Backbone.Collection.extend({
+            model: Task,
+            url: '/api/tasks'
+        });
+
+        var TaskView = Backbone.View.extend({
+            tagName: 'li',
+            className: 'list-group-item d-flex justify-content-between align-items-center',
+            template: _.template(
+                '<div class="form-check">' +
+                    '<input type="checkbox" class="form-check-input me-2 toggle" <% if (completed) { %>checked<% } %>>' +
+                    '<%= content %>' +
+                '</div>' +
+                '<button class="btn btn-danger btn-sm delete">Obriši</button>'
+            ),
+
+            events: {
+                'click .toggle': 'toggleCompleted',
+                'click .delete': 'removeTask'
+            },
+
+            initialize: function() {
+                this.listenTo(this.model, 'change', this.render);
+                this.listenTo(this.model, 'destroy', this.remove);
+            },
+
+            render: function() {
+                this.$el.html(this.template(this.model.toJSON()));
+                return this;
+            },
+
+            toggleCompleted: function() {
+                this.model.toggleCompleted();
+            },
+
+            removeTask: function() {
+                this.model.destroy();
+            }
+        });
+
+        var AppView = Backbone.View.extend({
+            el: '.container',
+
+            events: {
+                'click #add-task-btn': 'addLocalTask',
+                'click #apply-tasks-btn': 'applyTasks'
+            },
+
+            initialize: function() {
+                this.input = this.$('#new-task');
+                this.listenTo(tasks, 'add', this.addOne);
+                this.listenTo(tasks, 'reset', this.addAll);
+                tasks.fetch();
+            },
+
+            addLocalTask: function() {
+                if (!this.input.val().trim()) return;
+                var newTask = new Task({ content: this.input.val().trim(), completed: false });
+                tasks.add(newTask);
+                this.input.val('');
+            },
+
+            applyTasks: function() {
+                var unsavedTasks = tasks.filter(function(task) {
+                    return !task.id;
+                });
+
+                var taskData = unsavedTasks.map(function(task) {
+                    return task.toJSON();
+                });
+
+                if (taskData.length > 0) {
+                    $.ajax({
+                        url: '/api/tasks/bulk',
+                        method: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify(taskData),
+                        success: function() {
+                            tasks.fetch({ reset: true });
+                        }
+                    });
+                }
+            },
+
+            addOne: function(task) {
+                var view = new TaskView({ model: task });
+                $('#task-list').append(view.render().el);
+            },
+
+            addAll: function() {
+                $('#task-list').html('');
+                tasks.each(this.addOne, this);
+            }
+        });
+
+        var tasks = new TaskList();
+        var app = new AppView();
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
